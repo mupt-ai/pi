@@ -1046,6 +1046,10 @@
           "description": "Whether the provider accepts max_output_tokens. Some Codex-protocol gateways reject it.",
           "default": true
         },
+        "supportsToolReferences": {
+          "type": "boolean",
+          "description": "Whether client-side tool search can load deferred tools with tool_reference blocks. Defaults to true for first-party Opus, Sonnet, and Fable models from Claude 4.5 onward; false otherwise."
+        },
         "supportsEagerToolInputStreaming": {
           "type": "boolean",
           "description": "Whether the provider accepts per-tool eager_input_streaming. When false, the Anthropic provider omits tools[].eager_input_streaming and sends the legacy fine-grained-tool-streaming-2025-05-14 beta header for tool-enabled requests.",
