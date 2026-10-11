@@ -101,6 +101,7 @@ export const stream: StreamFunction<"azure-openai-responses", AzureOpenAIRespons
 
 			await processResponsesStream(openaiStream, output, stream, model, {
 				onProviderStreamEvent: options?.onProviderStreamEvent,
+				emitProviderEvents: options?.emitProviderEvents,
 				grammarToolInputProperties,
 			});
 

@@ -3,6 +3,7 @@ import type {
 	BetaInputTransformation,
 	BetaStopReason,
 	BetaTool,
+	BetaToolUnion,
 	BetaCacheControlEphemeral as CacheControlEphemeral,
 	BetaContentBlockParam as ContentBlockParam,
 	MessageCreateParamsStreaming,
@@ -27,6 +28,7 @@ import type {
 	Model,
 	ProviderEnv,
 	ProviderHeaders,
+	ServerToolCallContent,
 	SimpleStreamOptions,
 	StopReason,
 	StreamFunction,
@@ -36,6 +38,7 @@ import type {
 	Tool,
 	ToolCall,
 	ToolResultMessage,
+	ToolSearchResultContent,
 } from "../types.ts";
 import { appendAssistantMessageDiagnostic } from "../utils/diagnostics.ts";
 import { AssistantMessageEventStream } from "../utils/event-stream.ts";
@@ -701,7 +704,9 @@ export const stream: StreamFunction<"anthropic-messages", AnthropicOptions> = (
 			stream.push({ type: "start", partial: output });
 
 			type Block = (ThinkingContent | TextContent | (ToolCall & { partialJson: string })) & { index: number };
-			const blocks = output.content as Block[];
+			const blocks = output.content as Array<
+				Block | ((ServerToolCallContent | ToolSearchResultContent) & { index: number; partialJson?: string })
+			>;
 
 			for await (const event of iterateAnthropicEvents(response, options?.signal)) {
 				await options?.onProviderStreamEvent?.(event, model);
@@ -763,6 +768,39 @@ export const stream: StreamFunction<"anthropic-messages", AnthropicOptions> = (
 						};
 						output.content.push(block);
 						stream.push({ type: "thinking_start", contentIndex: output.content.length - 1, partial: output });
+					} else if (event.content_block.type === "server_tool_use") {
+						output.content.push({
+							type: "serverToolCall",
+							id: event.content_block.id,
+							name: event.content_block.name,
+							arguments: event.content_block.input as ServerToolCallContent["arguments"],
+							index: event.index,
+							partialJson: "",
+						} as ServerToolCallContent);
+						stream.push({
+							type: "server_tool_call_start",
+							contentIndex: output.content.length - 1,
+							partial: output,
+						});
+					} else if (event.content_block.type === "tool_search_tool_result") {
+						const references =
+							event.content_block.content.type === "tool_search_tool_search_result"
+								? event.content_block.content.tool_references
+								: [];
+						output.content.push({
+							type: "toolSearchResult",
+							toolUseId: event.content_block.tool_use_id,
+							content: references.map((reference) => ({
+								type: "tool_reference",
+								tool_name: reference.tool_name,
+							})),
+							index: event.index,
+						} as ToolSearchResultContent);
+						stream.push({
+							type: "tool_search_result_start",
+							contentIndex: output.content.length - 1,
+							partial: output,
+						});
 					} else if (event.content_block.type === "tool_use") {
 						const block: Block = {
 							type: "toolCall",
@@ -805,7 +843,10 @@ export const stream: StreamFunction<"anthropic-messages", AnthropicOptions> = (
 					} else if (event.delta.type === "input_json_delta") {
 						const index = blocks.findIndex((b) => b.index === event.index);
 						const block = blocks[index];
-						if (block && block.type === "toolCall") {
+						if (block?.type === "serverToolCall") {
+							block.partialJson = (block.partialJson ?? "") + event.delta.partial_json;
+							block.arguments = parseStreamingJson(block.partialJson);
+						} else if (block && block.type === "toolCall") {
 							block.partialJson += event.delta.partial_json;
 							block.arguments = parseStreamingJson(block.partialJson);
 							stream.push({
@@ -828,6 +869,22 @@ export const stream: StreamFunction<"anthropic-messages", AnthropicOptions> = (
 					const block = blocks[index];
 					if (block) {
 						delete (block as any).index;
+						if (block.type === "serverToolCall") {
+							delete block.partialJson;
+							stream.push({
+								type: "server_tool_call_end",
+								contentIndex: index,
+								serverToolCall: block,
+								partial: output,
+							});
+						} else if (block.type === "toolSearchResult") {
+							stream.push({
+								type: "tool_search_result_end",
+								contentIndex: index,
+								toolSearchResult: block,
+								partial: output,
+							});
+						}
 						if (block.type === "text") {
 							stream.push({
 								type: "text_end",
@@ -1160,7 +1217,7 @@ function getBetaFeatures(
 		features.push(INTERLEAVED_THINKING_BETA);
 	}
 	if (shouldUseServerSideFallbackBeta(model)) features.push(SERVER_SIDE_FALLBACK_BETA);
-	if (model.compat?.supportsMidConvoEffort === true) {
+	if (model.compat?.supportsMidConvoEffort === true && options?.thinkingEnabled !== false) {
 		features.push(MID_CONVERSATION_OUTPUT_CONFIG_BETA, THINKING_BINDING_CONTROLS_BETA);
 	}
 	if (nativeToolChanges) features.push(INLINE_TOOLS_BETA);
@@ -1190,7 +1247,7 @@ function buildParams(
 	// Anthropic rejects a tool list where every tool is deferred, so there must be an initial
 	// active tool to anchor the placeholder. Otherwise the current tool list is sent.
 	let hasPreferredStrictTools = false;
-	const convertToolDefinitions = (tools: Tool[], toolCacheControl?: CacheControlEphemeral): BetaTool[] => {
+	const convertToolDefinitions = (tools: Tool[], toolCacheControl?: CacheControlEphemeral): BetaToolUnion[] => {
 		const definitions = convertTools(
 			tools,
 			isOAuthToken,
@@ -1202,7 +1259,12 @@ function buildParams(
 		if (
 			definitions.some((definition, index) => {
 				const config = tools[index].constrainedSampling;
-				return definition.strict === true && config && config.type === "json_schema" && config.strict === "prefer";
+				return (
+					(definition as BetaTool).strict === true &&
+					config &&
+					config.type === "json_schema" &&
+					config.strict === "prefer"
+				);
 			})
 		) {
 			hasPreferredStrictTools = true;
@@ -1441,7 +1503,7 @@ function convertMessages(
 	allowEmptySignature = false,
 	managedProvider?: string,
 	/** Converts tool definitions for native `tool_addition` blocks; undefined when tool changes are not native. */
-	convertToolDefinitions?: (tools: Tool[]) => BetaTool[],
+	convertToolDefinitions?: (tools: Tool[]) => BetaToolUnion[],
 	deferredToolNames: ReadonlySet<string> = new Set(),
 	normalizeToolName: (name: string) => string = (name) => name,
 ): ConvertedAnthropicMessages {
@@ -1561,6 +1623,19 @@ function convertMessages(
 							signature: thinkingSignature,
 						});
 					}
+				} else if (block.type === "serverToolCall") {
+					blocks.push({
+						type: "server_tool_use",
+						id: block.id,
+						name: block.name,
+						input: block.arguments,
+					} as ContentBlockParam);
+				} else if (block.type === "toolSearchResult") {
+					blocks.push({
+						type: "tool_search_tool_result",
+						tool_use_id: block.toolUseId,
+						content: { type: "tool_search_tool_search_result", tool_references: block.content },
+					});
 				} else if (block.type === "toolCall") {
 					blocks.push({
 						type: "tool_use",
@@ -1724,10 +1799,18 @@ function convertTools(
 	cacheControl?: CacheControlEphemeral,
 	disablePreferredStrictTools = false,
 	deferLoading = false,
-): BetaTool[] {
+): BetaToolUnion[] {
 	if (!tools) return [];
 
 	return tools.map((tool, index) => {
+		if (tool.serverTool === true && tool.type !== undefined) {
+			return {
+				name: isOAuthToken ? toClaudeCodeName(tool.name) : tool.name,
+				type: tool.type,
+				...(deferLoading ? { defer_loading: true } : {}),
+				...(cacheControl && index === tools.length - 1 ? { cache_control: cacheControl } : {}),
+			} as BetaToolUnion;
+		}
 		const config = tool.constrainedSampling;
 		const strict =
 			disablePreferredStrictTools && config && config.type === "json_schema" && config.strict === "prefer"

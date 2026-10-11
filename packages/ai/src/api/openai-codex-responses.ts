@@ -694,6 +694,7 @@ async function processStream(
 		model,
 		{
 			serviceTier: options?.serviceTier,
+			emitProviderEvents: options?.emitProviderEvents,
 			grammarToolInputProperties,
 			resolveServiceTier: resolveCodexServiceTier,
 			applyServiceTierPricing: (usage, serviceTier) => applyServiceTierPricing(usage, serviceTier, model),
@@ -1577,6 +1578,7 @@ async function processWebSocketStream(
 			model,
 			{
 				serviceTier: options?.serviceTier,
+				emitProviderEvents: options?.emitProviderEvents,
 				grammarToolInputProperties,
 				resolveServiceTier: resolveCodexServiceTier,
 				applyServiceTierPricing: (usage, serviceTier) => applyServiceTierPricing(usage, serviceTier, model),

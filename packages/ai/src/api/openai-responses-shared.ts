@@ -10,6 +10,7 @@ import type {
 	ResponseInputText,
 	ResponseOutputItem,
 	ResponseOutputMessage,
+	ResponseOutputText,
 	ResponseReasoningItem,
 	ResponseStreamEvent,
 	ResponseToolSearchOutputItemParam,
@@ -110,6 +111,7 @@ function convertToolResultOutput<TApi extends Api>(
 
 export interface OpenAIResponsesStreamOptions {
 	onProviderStreamEvent?: StreamOptions["onProviderStreamEvent"];
+	emitProviderEvents?: boolean;
 	serviceTier?: ResponseCreateParamsStreaming["service_tier"];
 	grammarToolInputProperties?: ReadonlyMap<string, string>;
 	resolveServiceTier?: (
@@ -330,7 +332,9 @@ export function convertResponsesMessages<TApi extends Api>(
 			const isDifferentModel = isSameProviderAndApi && assistantMsg.model !== model.id;
 			let textBlockIndex = 0;
 
-			for (const block of msg.content) {
+			for (const block of msg.content as Array<
+				AssistantMessage["content"][number] | { type: "providerItem"; item: Record<string, unknown> }
+			>) {
 				if (block.type === "thinking") {
 					if (block.thinkingSignature) {
 						const reasoningItem = JSON.parse(block.thinkingSignature) as ResponseReasoningItem;
@@ -352,7 +356,13 @@ export function convertResponsesMessages<TApi extends Api>(
 					output.push({
 						type: "message",
 						role: "assistant",
-						content: [{ type: "output_text", text: sanitizeSurrogates(textBlock.text), annotations: [] }],
+						content: [
+							{
+								type: "output_text",
+								text: sanitizeSurrogates(textBlock.text),
+								annotations: (textBlock.annotations ?? []) as unknown as ResponseOutputText["annotations"],
+							},
+						],
 						status: "completed",
 						id: msgId,
 						phase: parsedSignature?.phase,
@@ -395,6 +405,8 @@ export function convertResponsesMessages<TApi extends Api>(
 							...(isSameModel && toolCall.namespace !== undefined ? { namespace: toolCall.namespace } : {}),
 						});
 					}
+				} else if (block.type === "providerItem") {
+					output.push(block.item as unknown as ResponseInputItem);
 				}
 			}
 			if (output.length === 0) continue;
@@ -676,6 +688,7 @@ export async function processResponsesStream<TApi extends Api>(
 
 	for await (const event of openaiStream) {
 		await options?.onProviderStreamEvent?.(event, model);
+		if (options?.emitProviderEvents) stream.push({ type: "provider_event", event });
 		if (event.type === "response.created") {
 			output.responseId = event.response.id;
 		} else if (event.type === "response.output_item.added") {

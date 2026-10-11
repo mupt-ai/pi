@@ -485,7 +485,13 @@ async function streamResponse(
 		for await (const event of events) {
 			// A partial without content, such as pi-ai's opening `start` event, shows nothing; a deferred response
 			// never gets past it, so it never leaves a partial.
-			if (event.type === "done" || event.type === "error" || event.partial.content.length === 0) continue;
+			if (
+				event.type === "done" ||
+				event.type === "error" ||
+				event.type === "provider_event" ||
+				event.partial.content.length === 0
+			)
+				continue;
 			pending = event.partial;
 			if (timer === undefined && inFlight === undefined) timer = runtime.setTimer(flush, interval);
 		}
