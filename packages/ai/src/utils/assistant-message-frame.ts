@@ -97,7 +97,7 @@ function assertContentIndex(contentIndex: number): void {
 	}
 }
 
-function eventBlock(event: Exclude<AssistantMessageEvent, { type: "start" | "done" | "error" }>) {
+function eventBlock(event: Exclude<AssistantMessageEvent, { type: "start" | "provider_event" | "done" | "error" }>) {
 	assertContentIndex(event.contentIndex);
 	const block = event.partial.content[event.contentIndex];
 	if (!block) {
@@ -149,6 +149,12 @@ export class AssistantMessageFrameEncoder {
 				if (this.started) throw new Error("Assistant message stream contains more than one start event");
 				this.started = true;
 				return { type: "start", partial: cloneStartMessage(event.partial) };
+			case "provider_event":
+			case "server_tool_call_start":
+			case "server_tool_call_end":
+			case "tool_search_result_start":
+			case "tool_search_result_end":
+				return undefined;
 			case "done":
 				if (!this.started) throw new Error("Assistant message done event appears before start");
 				this.terminal = true;

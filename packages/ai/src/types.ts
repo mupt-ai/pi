@@ -221,6 +221,8 @@ export interface StreamOptions extends ProviderRequestOptions<Model<Api>> {
 	 * Adapter support is explicit; unsupported adapters do not invoke it.
 	 */
 	onProviderStreamEvent?: (data: unknown, model: Model<Api>) => void | Promise<void>;
+	/** Emit raw Responses events alongside normalized assistant events. */
+	emitProviderEvents?: boolean;
 	temperature?: number;
 	/**
 	 * Arbitrary sampling parameters merged into the request body as-is, after the named request
@@ -415,6 +417,8 @@ export interface TextContent {
 	type: "text";
 	text: string;
 	textSignature?: string; // e.g., for OpenAI responses, message metadata (legacy id string or TextSignatureV1 JSON)
+	/** Provider-native citations preserved when replaying Responses output. */
+	annotations?: Array<Record<string, string | number | boolean | null>>;
 }
 
 export interface ThinkingContent {
@@ -441,6 +445,19 @@ export interface ToolCall {
 	thoughtSignature?: string; // Google-specific: opaque signature for reusing thought context
 	/** OpenAI Responses namespace for calls to dynamically loaded or namespaced tools. */
 	namespace?: string;
+}
+
+export interface ServerToolCallContent {
+	type: "serverToolCall";
+	id: string;
+	name: string;
+	arguments: JsonObject;
+}
+
+export interface ToolSearchResultContent {
+	type: "toolSearchResult";
+	toolUseId: string;
+	content: Array<{ type: "tool_reference"; tool_name: string }>;
 }
 
 export interface Usage {
@@ -564,7 +581,7 @@ export interface UserMessage {
 
 export interface AssistantMessage {
 	role: "assistant";
-	content: (TextContent | ThinkingContent | ToolCall)[];
+	content: (TextContent | ThinkingContent | ToolCall | ServerToolCallContent | ToolSearchResultContent)[];
 	api: Api;
 	provider: ProviderId;
 	model: string;
@@ -755,6 +772,9 @@ export interface Tool<TParameters extends TSchema = TSchema> {
 	constrainedSampling?: false | ConstrainedSamplingConfig;
 	/** Defer this definition on providers with native client-side tool loading. */
 	deferLoading?: boolean;
+	/** Anthropic provider-native server tool type; omits input_schema. */
+	type?: string;
+	serverTool?: boolean;
 }
 
 export interface ToolReference {
@@ -804,6 +824,21 @@ export type TranscriptContext = {
  */
 export type AssistantMessageEvent =
 	| { type: "start"; partial: AssistantMessage }
+	| { type: "provider_event"; event: unknown }
+	| { type: "server_tool_call_start"; contentIndex: number; partial: AssistantMessage }
+	| {
+			type: "server_tool_call_end";
+			contentIndex: number;
+			serverToolCall: ServerToolCallContent;
+			partial: AssistantMessage;
+	  }
+	| { type: "tool_search_result_start"; contentIndex: number; partial: AssistantMessage }
+	| {
+			type: "tool_search_result_end";
+			contentIndex: number;
+			toolSearchResult: ToolSearchResultContent;
+			partial: AssistantMessage;
+	  }
 	| { type: "text_start"; contentIndex: number; partial: AssistantMessage }
 	| { type: "text_delta"; contentIndex: number; delta: string; partial: AssistantMessage }
 	| { type: "text_end"; contentIndex: number; content: string; partial: AssistantMessage }
