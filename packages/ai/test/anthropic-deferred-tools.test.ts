@@ -109,6 +109,15 @@ describe("Anthropic client-side deferred tools", () => {
 		]);
 	});
 
+	test("omits empty displaced text from reference-only results", async () => {
+		const payload = await capture({ ...context, messages: [user, assistant, { ...result, content: [] }] });
+		const content = payload.messages.at(-1)?.content;
+		expect(content).toHaveLength(1);
+		expect(content).toMatchObject([
+			{ type: "tool_result", content: [{ type: "tool_reference", tool_name: "read" }] },
+		]);
+	});
+
 	test("deduplicates OAuth-canonicalized tool declarations with the later definition winning", async () => {
 		const payload = await capture(
 			{
