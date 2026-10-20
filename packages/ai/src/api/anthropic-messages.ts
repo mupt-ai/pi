@@ -167,16 +167,18 @@ function convertContentBlocks(content: (TextContent | ImageContent)[]):
 		return sanitizeSurrogates(content.map((c) => (c as TextContent).text).join("\n"));
 	}
 
-	// If we have images, convert to content block array
-	const blocks = content.map((block) => {
-		if (block.type === "text") {
-			return {
-				type: "text" as const,
-				text: sanitizeSurrogates(block.text),
-			};
-		}
-		return convertImageBlock(block);
-	});
+	// If we have images, convert to content block array. Anthropic rejects empty text blocks.
+	const blocks = content
+		.filter((block) => block.type !== "text" || block.text.trim().length > 0)
+		.map((block) => {
+			if (block.type === "text") {
+				return {
+					type: "text" as const,
+					text: sanitizeSurrogates(block.text),
+				};
+			}
+			return convertImageBlock(block);
+		});
 
 	// If only images (no text), add placeholder text block
 	const hasText = blocks.some((b) => b.type === "text");
@@ -1486,7 +1488,9 @@ function convertToolResult(
 			references.length === 0
 				? []
 				: typeof convertedContent === "string"
-					? [{ type: "text", text: convertedContent }]
+					? convertedContent.trim().length > 0
+						? [{ type: "text", text: convertedContent }]
+						: []
 					: convertedContent,
 	};
 }
