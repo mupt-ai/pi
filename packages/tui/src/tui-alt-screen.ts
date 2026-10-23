@@ -427,6 +427,17 @@ export class TuiAltScreen extends TuiBase implements ViewportTUI {
 		}
 	}
 
+	protected override getExitRestorePrefix(): string {
+		const prefix = super.getExitRestorePrefix();
+		if (!this.altScreenActive) return prefix;
+		return `${END_SYNCHRONIZED_OUTPUT}${this.mouseEnabled ? DISABLE_MOUSE : ""}${ENABLE_AUTOWRAP}${prefix}`;
+	}
+
+	protected override getExitRestoreSuffix(): string {
+		// Kitty keyboard flags are per screen, so the terminal pops them before the alternate screen is left.
+		return `${super.getExitRestoreSuffix()}${this.altScreenActive ? `${EXIT_ALT_SCREEN}\x1b[?25h` : ""}`;
+	}
+
 	private deleteKittyImages(): string {
 		return this.imageProtocol === "kitty" ? deleteAllKittyImages() : "";
 	}
@@ -715,7 +726,6 @@ export class TuiAltScreen extends TuiBase implements ViewportTUI {
 				if (this.applyMouseDispatchResult(event, result)) this.requestRender();
 				return { consume: true };
 			}
-			if (this.shouldDeferViewportInputToOverlay()) return undefined;
 			this.routeWheel(wheelEvent, wheelDelta);
 			return { consume: true };
 		}
