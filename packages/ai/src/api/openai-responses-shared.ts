@@ -566,7 +566,13 @@ export async function processResponsesStream<TApi extends Api>(
 		}
 		if (item.type === "message") {
 			applyMessagePhaseStopReason(item);
-			const block: TextContent = { type: "text", text: "" };
+			// Carry the item's id and phase from the start so streaming consumers
+			// can announce them before any text arrives.
+			const block: TextContent = {
+				type: "text",
+				text: "",
+				...(item.id ? { textSignature: encodeTextSignatureV1(item.id, item.phase ?? undefined) } : {}),
+			};
 			output.content.push(block);
 			const slot = { type: "text", block, contentIndex: output.content.length - 1 } satisfies ResponsesOutputSlot;
 			outputSlots.set(outputIndex, slot);
