@@ -18,7 +18,14 @@ const model: Model<"openai-responses"> = {
 };
 
 async function* events(): AsyncIterable<ResponseStreamEvent> {
-	const item = { type: "message", id: "msg_1", role: "assistant", status: "in_progress", content: [], phase: "commentary" };
+	const item = {
+		type: "message",
+		id: "msg_1",
+		role: "assistant",
+		status: "in_progress",
+		content: [],
+		phase: "commentary",
+	};
 	yield { type: "response.output_item.added", output_index: 0, sequence_number: 0, item } as ResponseStreamEvent;
 	yield {
 		type: "response.output_text.delta",
