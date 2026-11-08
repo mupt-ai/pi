@@ -19,6 +19,7 @@ import { calculateCost } from "../models.ts";
 import type {
 	Api,
 	AssistantMessage,
+	DocumentContent,
 	ImageContent,
 	Model,
 	StopReason,
@@ -82,7 +83,7 @@ type ToolResultOutputContent = Array<ResponseInputText | ResponseInputImage>;
 
 function convertToolResultOutput<TApi extends Api>(
 	model: Model<TApi>,
-	content: readonly (TextContent | ImageContent)[],
+	content: readonly (TextContent | ImageContent | DocumentContent)[],
 ): string | ToolResultOutputContent {
 	const textResult = content
 		.filter((c): c is TextContent => c.type === "text")

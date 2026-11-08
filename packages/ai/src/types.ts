@@ -445,6 +445,13 @@ export interface ImageContent {
 	mimeType: string; // e.g., "image/jpeg", "image/png"
 }
 
+/** A base64-encoded document. Only the anthropic-messages API accepts documents; other APIs reject them. */
+export interface DocumentContent {
+	type: "document";
+	data: string; // base64 encoded document data
+	mimeType: "application/pdf";
+}
+
 export interface ToolCall {
 	type: "toolCall";
 	id: string;
@@ -588,7 +595,7 @@ export interface SystemMessage {
 
 export interface UserMessage {
 	role: "user";
-	content: string | (TextContent | ImageContent)[];
+	content: string | (TextContent | ImageContent | DocumentContent)[];
 	timestamp: number; // Unix timestamp in milliseconds
 }
 
@@ -652,7 +659,7 @@ export type ToolResultMessage<TDetails = JsonValue> = IsJsonCompatible<TDetails>
 			role: "toolResult";
 			toolCallId: string;
 			toolName: string;
-			content: (TextContent | ImageContent)[]; // Supports text and images
+			content: (TextContent | ImageContent | DocumentContent)[]; // Supports text, images, and documents
 			details?: JsonRepresentation<TDetails>;
 			/** Usage from the tool execution itself, if available. Not part of main LLM context accounting. */
 			usage?: Usage;

@@ -1,4 +1,4 @@
-import type { AssistantMessage, ImageContent, Message, TextContent, TranscriptContext, Usage } from "../types.ts";
+import type { AssistantMessage, DocumentContent, ImageContent, Message, TextContent, TranscriptContext, Usage } from "../types.ts";
 import { getSystemMessageText } from "./text.ts";
 
 export interface ContextUsageEstimate {
@@ -27,10 +27,11 @@ function safeJsonStringify(value: unknown): string {
 	}
 }
 
-function estimateTextAndImageContentChars(content: string | Array<TextContent | ImageContent>): number {
+function estimateTextAndImageContentChars(content: string | Array<TextContent | ImageContent | DocumentContent>): number {
 	if (typeof content === "string") return content.length;
 
 	let chars = 0;
+	// Documents are not sized from their bytes; they use the same rough per-attachment estimate as images.
 	for (const block of content) chars += block.type === "text" ? block.text.length : ESTIMATED_IMAGE_CHARS;
 	return chars;
 }
@@ -39,7 +40,7 @@ export function estimateTextTokens(text: string): number {
 	return Math.ceil(text.length / CHARS_PER_TOKEN);
 }
 
-export function estimateTextAndImageContentTokens(content: string | Array<TextContent | ImageContent>): number {
+export function estimateTextAndImageContentTokens(content: string | Array<TextContent | ImageContent | DocumentContent>): number {
 	return Math.ceil(estimateTextAndImageContentChars(content) / CHARS_PER_TOKEN);
 }
 

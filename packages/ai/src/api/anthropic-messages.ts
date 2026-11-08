@@ -23,6 +23,7 @@ import type {
 	Api,
 	AssistantMessage,
 	CacheRetention,
+	DocumentContent,
 	ImageContent,
 	Message,
 	Model,
@@ -134,6 +135,17 @@ const fromClaudeCodeName = (name: string, tools?: Tool[]) => {
 	return name;
 };
 
+function convertDocumentBlock(document: DocumentContent) {
+	return {
+		type: "document" as const,
+		source: {
+			type: "base64" as const,
+			media_type: document.mimeType,
+			data: document.data,
+		},
+	};
+}
+
 function convertImageBlock(image: ImageContent) {
 	return {
 		type: "image" as const,
@@ -148,7 +160,7 @@ function convertImageBlock(image: ImageContent) {
 /**
  * Convert content blocks to Anthropic API format
  */
-function convertContentBlocks(content: (TextContent | ImageContent)[]):
+function convertContentBlocks(content: (TextContent | ImageContent | DocumentContent)[]):
 	| string
 	| Array<
 			| { type: "text"; text: string }
@@ -160,9 +172,17 @@ function convertContentBlocks(content: (TextContent | ImageContent)[]):
 						data: string;
 					};
 			  }
+			| {
+					type: "document";
+					source: {
+						type: "base64";
+						media_type: "application/pdf";
+						data: string;
+					};
+			  }
 	  > {
 	// If only text blocks, return as concatenated string for simplicity
-	const hasImages = content.some((c) => c.type === "image");
+	const hasImages = content.some((c) => c.type === "image" || c.type === "document");
 	if (!hasImages) {
 		return sanitizeSurrogates(content.map((c) => (c as TextContent).text).join("\n"));
 	}
@@ -177,6 +197,7 @@ function convertContentBlocks(content: (TextContent | ImageContent)[]):
 					text: sanitizeSurrogates(block.text),
 				};
 			}
+			if (block.type === "document") return convertDocumentBlock(block);
 			return convertImageBlock(block);
 		});
 
@@ -185,7 +206,7 @@ function convertContentBlocks(content: (TextContent | ImageContent)[]):
 	if (!hasText) {
 		blocks.unshift({
 			type: "text" as const,
-			text: "(see attached image)",
+			text: content.some((c) => c.type === "document") ? "(see attached document)" : "(see attached image)",
 		});
 	}
 
@@ -1565,6 +1586,8 @@ function convertMessages(
 							type: "text",
 							text: sanitizeSurrogates(item.text),
 						};
+					} else if (item.type === "document") {
+						return convertDocumentBlock(item);
 					} else {
 						return convertImageBlock(item);
 					}

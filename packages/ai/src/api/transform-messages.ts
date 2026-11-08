@@ -1,6 +1,7 @@
 import type {
 	Api,
 	AssistantMessage,
+	DocumentContent,
 	ImageContent,
 	Message,
 	Model,
@@ -16,7 +17,7 @@ const ERROR_TOOL_IMAGE_PLACEHOLDER = "(image attached after the tool results)";
 /** An error tool result split into a text-only result and the images to send after the tool results. */
 export interface SplitErrorToolResult {
 	/** The result content with each run of images replaced by a note. */
-	content: TextContent[];
+	content: (TextContent | DocumentContent)[];
 	/** Text naming the tool call, to send before `images`. */
 	caption: string;
 	images: ImageContent[];
@@ -39,8 +40,11 @@ export function splitErrorToolResultImages(msg: ToolResultMessage): SplitErrorTo
 	};
 }
 
-function replaceImagesWithPlaceholder(content: (TextContent | ImageContent)[], placeholder: string): TextContent[] {
-	const result: TextContent[] = [];
+function replaceImagesWithPlaceholder(
+	content: (TextContent | ImageContent | DocumentContent)[],
+	placeholder: string,
+): (TextContent | DocumentContent)[] {
+	const result: (TextContent | DocumentContent)[] = [];
 	let previousWasPlaceholder = false;
 
 	for (const block of content) {
@@ -53,10 +57,20 @@ function replaceImagesWithPlaceholder(content: (TextContent | ImageContent)[], p
 		}
 
 		result.push(block);
-		previousWasPlaceholder = block.text === placeholder;
+		previousWasPlaceholder = block.type === "text" && block.text === placeholder;
 	}
 
 	return result;
+}
+
+function rejectDocuments<TApi extends Api>(messages: Message[], model: Model<TApi>): void {
+	for (const msg of messages) {
+		if (msg.role !== "user" && msg.role !== "toolResult") continue;
+		if (typeof msg.content === "string") continue;
+		if (msg.content.some((block) => block.type === "document")) {
+			throw new Error(`Document input is not supported by ${model.provider}/${model.id}; only anthropic-messages models accept documents.`);
+		}
+	}
 }
 
 function downgradeUnsupportedImages<TApi extends Api>(messages: Message[], model: Model<TApi>): Message[] {
@@ -98,6 +112,9 @@ export function transformMessages<TApi extends Api>(
 	// Normalize null/undefined content from untyped callers (custom tools, hand-built
 	// histories, old session files) so downstream code can rely on the type contract.
 	const normalizedMessages = messages.map((msg) => (msg.content == null ? { ...msg, content: [] } : msg));
+	if (model.api !== "anthropic-messages") {
+		rejectDocuments(normalizedMessages, model);
+	}
 	const imageAwareMessages = downgradeUnsupportedImages(normalizedMessages, model);
 
 	// First pass: transform messages (unsupported image downgrade, thinking blocks, tool call ID normalization)
