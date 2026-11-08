@@ -14,6 +14,7 @@ import {
 	ConversationRole,
 	ConverseStreamCommand,
 	type ConverseStreamMetadataEvent,
+	DocumentFormat,
 	ImageFormat,
 	type Message,
 	type SystemContentBlock,
@@ -972,14 +973,16 @@ function sanitizeBedrockDocument(value: JsonValue): DocumentType {
 	return value;
 }
 
-function convertToolResultContent(content: (TextContent | ImageContent | DocumentContent)[]): ToolResultContentBlock[] {
+function convertToolResultContent(
+	content: (TextContent | ImageContent | DocumentContent)[],
+	documentName: () => string,
+): ToolResultContentBlock[] {
 	const result: ToolResultContentBlock[] = [];
 	for (const c of content) {
 		if (c.type === "image") {
 			result.push({ image: createImageBlock(c.mimeType, c.data) });
 		} else if (c.type === "document") {
-			// transformMessages rejects documents for this API before they reach here.
-			throw new Error("Document input is not supported by bedrock-converse-stream.");
+			result.push({ document: createDocumentBlock(c, documentName()) });
 		} else {
 			const textBlock = createNonBlankTextBlock(c.text);
 			if (textBlock) result.push(textBlock);
@@ -996,6 +999,9 @@ function convertMessages(
 	env?: ProviderEnv,
 ): Message[] {
 	const result: Message[] = [];
+	// Converse requires a name on every document; keep them unique within the request.
+	let documentCount = 0;
+	const documentName = () => `document-${++documentCount}`;
 	const transformedMessages = transformMessages(
 		withoutInitialSystemMessage(context.messages),
 		model,
@@ -1020,6 +1026,9 @@ function convertMessages(
 							}
 							case "image":
 								content.push({ image: createImageBlock(c.mimeType, c.data) });
+								break;
+							case "document":
+								content.push({ document: createDocumentBlock(c, documentName()) });
 								break;
 							default:
 								continue;
@@ -1120,7 +1129,7 @@ function convertMessages(
 					toolResults.push({
 						toolResult: {
 							toolUseId: toolMsg.toolCallId,
-							content: convertToolResultContent(split?.content ?? toolMsg.content),
+							content: convertToolResultContent(split?.content ?? toolMsg.content, documentName),
 							status: toolMsg.isError ? ToolResultStatus.ERROR : ToolResultStatus.SUCCESS,
 						},
 					});
@@ -1391,6 +1400,10 @@ function createImageBlock(mimeType: string, data: string) {
 	}
 
 	return { source: { bytes: base64ToBytes(data) }, format };
+}
+
+function createDocumentBlock(document: DocumentContent, name: string) {
+	return { format: DocumentFormat.PDF, name, source: { bytes: base64ToBytes(document.data) } };
 }
 
 function base64ToBytes(data: string): Uint8Array {

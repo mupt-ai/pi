@@ -63,12 +63,21 @@ function replaceImagesWithPlaceholder(
 	return result;
 }
 
+/** APIs that accept PDF documents natively, in user messages and tool results. */
+const DOCUMENT_INPUT_APIS: ReadonlySet<Api> = new Set<Api>([
+	"anthropic-messages",
+	"bedrock-converse-stream",
+	"openai-responses",
+	"azure-openai-responses",
+	"openai-codex-responses",
+]);
+
 function rejectDocuments<TApi extends Api>(messages: Message[], model: Model<TApi>): void {
 	for (const msg of messages) {
 		if (msg.role !== "user" && msg.role !== "toolResult") continue;
 		if (typeof msg.content === "string") continue;
 		if (msg.content.some((block) => block.type === "document")) {
-			throw new Error(`Document input is not supported by ${model.provider}/${model.id}; only anthropic-messages models accept documents.`);
+			throw new Error(`Document input is not supported by the ${model.api} API (${model.provider}/${model.id}).`);
 		}
 	}
 }
@@ -112,7 +121,7 @@ export function transformMessages<TApi extends Api>(
 	// Normalize null/undefined content from untyped callers (custom tools, hand-built
 	// histories, old session files) so downstream code can rely on the type contract.
 	const normalizedMessages = messages.map((msg) => (msg.content == null ? { ...msg, content: [] } : msg));
-	if (model.api !== "anthropic-messages") {
+	if (!DOCUMENT_INPUT_APIS.has(model.api)) {
 		rejectDocuments(normalizedMessages, model);
 	}
 	const imageAwareMessages = downgradeUnsupportedImages(normalizedMessages, model);

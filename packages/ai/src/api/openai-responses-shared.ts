@@ -5,6 +5,7 @@ import type {
 	ResponseCreateParamsStreaming,
 	ResponseInput,
 	ResponseInputContent,
+	ResponseInputFile,
 	ResponseInputImage,
 	ResponseInputItem,
 	ResponseInputText,
@@ -79,7 +80,15 @@ function parseTextSignature(
 	return { id: signature };
 }
 
-type ToolResultOutputContent = Array<ResponseInputText | ResponseInputImage>;
+type ToolResultOutputContent = Array<ResponseInputText | ResponseInputImage | ResponseInputFile>;
+
+function convertDocument(document: DocumentContent): ResponseInputFile {
+	return {
+		type: "input_file",
+		filename: "document.pdf",
+		file_data: `data:${document.mimeType};base64,${document.data}`,
+	};
+}
 
 function convertToolResultOutput<TApi extends Api>(
 	model: Model<TApi>,
@@ -90,9 +99,11 @@ function convertToolResultOutput<TApi extends Api>(
 		.map((c) => c.text)
 		.join("\n");
 	const images = content.filter((c): c is ImageContent => c.type === "image");
+	const documents = content.filter((c): c is DocumentContent => c.type === "document");
+	const sendImages = images.length > 0 && model.input.includes("image");
 	const hasText = textResult.trim().length > 0;
 
-	if (images.length === 0 || !model.input.includes("image")) {
+	if (!sendImages && documents.length === 0) {
 		return sanitizeSurrogates(hasText ? textResult : images.length > 0 ? "(see attached image)" : "(no tool output)");
 	}
 
@@ -100,13 +111,14 @@ function convertToolResultOutput<TApi extends Api>(
 	if (hasText) {
 		output.push({ type: "input_text", text: sanitizeSurrogates(textResult) });
 	}
-	for (const image of images) {
+	for (const image of sendImages ? images : []) {
 		output.push({
 			type: "input_image",
 			detail: "auto",
 			image_url: `data:${image.mimeType};base64,${image.data}`,
 		});
 	}
+	for (const document of documents) output.push(convertDocument(document));
 	return output;
 }
 
@@ -313,6 +325,7 @@ export function convertResponsesMessages<TApi extends Api>(
 							text: sanitizeSurrogates(item.text),
 						} satisfies ResponseInputText;
 					}
+					if (item.type === "document") return convertDocument(item);
 					return {
 						type: "input_image",
 						detail: "auto",
