@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { streamSimple } from "../src/compat.ts";
-import type { AssistantMessage, Context, Model } from "../src/types.ts";
 import { convertResponsesMessages } from "../src/api/openai-responses-shared.ts";
 import { transformMessages } from "../src/api/transform-messages.ts";
+import { streamSimple } from "../src/compat.ts";
+import type { AssistantMessage, Context, Model } from "../src/types.ts";
 import { normalizeContext } from "../src/utils/transcript.ts";
 
 interface AnthropicPayload {
@@ -91,6 +91,7 @@ describe("Anthropic document content", () => {
 					toolCallId: "call-1",
 					toolName: "read",
 					content: [{ type: "document", data: "JVBERi0=", mimeType: "application/pdf" }],
+					isError: false,
 					timestamp: Date.now(),
 				},
 			],
@@ -98,12 +99,20 @@ describe("Anthropic document content", () => {
 		const toolResult = payload.messages[2].content as Array<Record<string, unknown>>;
 		expect(toolResult[0]).toMatchObject({ type: "tool_result", tool_use_id: "call-1" });
 		// Anthropic needs a text block alongside non-text blocks; the placeholder matches the image path.
-		expect((toolResult[0] as { content: unknown }).content).toEqual([{ type: "text", text: "(see attached document)" }, pdf]);
+		expect((toolResult[0] as { content: unknown }).content).toEqual([
+			{ type: "text", text: "(see attached document)" },
+			pdf,
+		]);
 	});
 });
 
 describe("document input for other APIs", () => {
-	const responsesModel: Model<"openai-responses"> = { ...model, api: "openai-responses", provider: "openai", id: "gpt-test" };
+	const responsesModel: Model<"openai-responses"> = {
+		...model,
+		api: "openai-responses",
+		provider: "openai",
+		id: "gpt-test",
+	};
 
 	it("sends PDFs to OpenAI Responses as input_file in user messages and tool output", () => {
 		const input = convertResponsesMessages(
@@ -134,15 +143,29 @@ describe("document input for other APIs", () => {
 		const file = { type: "input_file", filename: "document.pdf", file_data: "data:application/pdf;base64,JVBERi0=" };
 		expect(input).toContainEqual({ role: "user", content: [file] });
 		expect(input).toContainEqual(
-			expect.objectContaining({ type: "function_call_output", output: [{ type: "input_text", text: "Read a.pdf" }, file] }),
+			expect.objectContaining({
+				type: "function_call_output",
+				output: [{ type: "input_text", text: "Read a.pdf" }, file],
+			}),
 		);
 	});
 
 	it("rejects documents explicitly for APIs without native PDF input", () => {
-		const completionsModel: Model<"openai-completions"> = { ...model, api: "openai-completions", provider: "fireworks", id: "glm" };
+		const completionsModel: Model<"openai-completions"> = {
+			...model,
+			api: "openai-completions",
+			provider: "fireworks",
+			id: "glm",
+		};
 		expect(() =>
 			transformMessages(
-				[{ role: "user", content: [{ type: "document", data: "JVBERi0=", mimeType: "application/pdf" }], timestamp: 0 }],
+				[
+					{
+						role: "user",
+						content: [{ type: "document", data: "JVBERi0=", mimeType: "application/pdf" }],
+						timestamp: 0,
+					},
+				],
 				completionsModel,
 			),
 		).toThrow(/not supported by the openai-completions API/);
