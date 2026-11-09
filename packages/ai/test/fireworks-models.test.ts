@@ -160,8 +160,14 @@ describe("Fireworks models", () => {
 	});
 
 	it("keeps toggle-only Messages models without a verified fallback on budget-based thinking", async () => {
-		const model = getModel("fireworks", "accounts/fireworks/models/nemotron-3-ultra-nvfp4");
-		expect(model.compat?.forceAdaptiveThinking).toBeUndefined();
+		// Every cataloged Fireworks Messages model now has effort controls, so derive one without:
+		// the generator gives such a model neither a thinking level map nor forceAdaptiveThinking.
+		const cataloged = getModel("fireworks", "accounts/fireworks/models/deepseek-v4p1-flash");
+		const model: Model<"anthropic-messages"> = {
+			...cataloged,
+			thinkingLevelMap: undefined,
+			compat: { ...cataloged.compat, forceAdaptiveThinking: undefined },
+		};
 		let payload: Record<string, unknown> | undefined;
 		await streamSimple(
 			model,
@@ -187,7 +193,7 @@ describe("Fireworks models", () => {
 	});
 
 	it("sets Fireworks-specific compat for session affinity and unsupported tool fields", () => {
-		const model = getModel("fireworks", "accounts/fireworks/models/nemotron-3-ultra-nvfp4");
+		const model = getModel("fireworks", "accounts/fireworks/models/deepseek-v4p1-flash");
 
 		expect(model.compat).toBeDefined();
 		expect(model.compat?.sendSessionAffinityHeaders).toBe(true);

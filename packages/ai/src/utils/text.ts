@@ -1,6 +1,6 @@
-import type { AssistantMessage, ImageContent, SystemMessage } from "../types.ts";
+import type { AssistantMessage, DocumentContent, ImageContent, SystemMessage } from "../types.ts";
 
-type Content = ImageContent | AssistantMessage["content"][number];
+type Content = ImageContent | DocumentContent | AssistantMessage["content"][number];
 
 /** Extract and join text from message content. */
 export function contentText(content: string | readonly Content[], separator = "\n"): string {

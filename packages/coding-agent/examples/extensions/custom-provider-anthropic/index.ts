@@ -30,6 +30,7 @@ import {
 	calculateCost,
 	collapseSystemMessages,
 	createAssistantMessageEventStream,
+	type DocumentContent,
 	getCurrentSystemPrompt,
 	getCurrentTools,
 	type ImageContent,
@@ -190,9 +191,9 @@ function sanitizeSurrogates(text: string): string {
 }
 
 function convertContentBlocks(
-	content: (TextContent | ImageContent)[],
-): string | Array<{ type: "text"; text: string } | { type: "image"; source: any }> {
-	const hasImages = content.some((c) => c.type === "image");
+	content: (TextContent | ImageContent | DocumentContent)[],
+): string | Array<{ type: "text"; text: string } | { type: "image" | "document"; source: any }> {
+	const hasImages = content.some((c) => c.type !== "text");
 	if (!hasImages) {
 		return sanitizeSurrogates(content.map((c) => (c as TextContent).text).join("\n"));
 	}
@@ -202,7 +203,7 @@ function convertContentBlocks(
 			return { type: "text" as const, text: sanitizeSurrogates(block.text) };
 		}
 		return {
-			type: "image" as const,
+			type: block.type,
 			source: {
 				type: "base64" as const,
 				media_type: block.mimeType,
