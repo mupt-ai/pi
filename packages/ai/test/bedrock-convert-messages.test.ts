@@ -51,6 +51,7 @@ vi.mock("@aws-sdk/client-bedrock-runtime", () => {
 		CacheTTL: { ONE_HOUR: "ONE_HOUR" },
 		ConversationRole: { ASSISTANT: "assistant", USER: "user" },
 		ImageFormat: { JPEG: "jpeg", PNG: "png", GIF: "gif", WEBP: "webp" },
+		DocumentFormat: { PDF: "pdf" },
 		ToolResultStatus: { ERROR: "error", SUCCESS: "success" },
 	};
 });
@@ -499,5 +500,55 @@ describe("bedrock convertMessages skips unknown content types", () => {
 			],
 		});
 		expect(toolArguments.edits[1]).toEqual({ oldText: "second", newText: "updated second", "": "" });
+	});
+});
+
+describe("Bedrock document content", () => {
+	it("sends PDFs as native document blocks with unique names in user messages and tool results", async () => {
+		const payload = (await capturePayload({
+			messages: [
+				{
+					role: "user",
+					content: [
+						{ type: "text", text: "Compare" },
+						{ type: "document", data: "JVBERi0=", mimeType: "application/pdf" },
+					],
+					timestamp: Date.now(),
+				},
+				{
+					role: "assistant",
+					content: [{ type: "toolCall", id: "call-1", name: "read", arguments: {} }],
+					api: "bedrock-converse-stream",
+					provider: "amazon-bedrock",
+					model: baseModel.id,
+					usage: {
+						input: 0,
+						output: 0,
+						cacheRead: 0,
+						cacheWrite: 0,
+						totalTokens: 0,
+						cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+					},
+					stopReason: "toolUse",
+					timestamp: Date.now(),
+				},
+				{
+					role: "toolResult",
+					toolCallId: "call-1",
+					toolName: "read",
+					content: [{ type: "document", data: "JVBERi0=", mimeType: "application/pdf" }],
+					isError: false,
+					timestamp: Date.now(),
+				},
+			],
+		})) as { messages: Array<{ content: Array<Record<string, unknown>> }> };
+		const pdfBytes = new Uint8Array([0x25, 0x50, 0x44, 0x46, 0x2d]);
+		expect(payload.messages[0].content[1]).toEqual({
+			document: { format: "pdf", name: "document-1", source: { bytes: pdfBytes } },
+		});
+		const toolResult = payload.messages[2].content[0] as { toolResult: { content: unknown[] } };
+		expect(toolResult.toolResult.content).toEqual([
+			{ document: { format: "pdf", name: "document-2", source: { bytes: pdfBytes } } },
+		]);
 	});
 });

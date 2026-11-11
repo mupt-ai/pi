@@ -125,7 +125,7 @@ describe("Bedrock stream state", () => {
 		let shown = -1;
 		const stream = streamBedrock(model, context);
 		for await (const event of stream) {
-			if (event.type === "done" || event.type === "error") continue;
+			if (event.type === "done" || event.type === "error" || event.type === "provider_event") continue;
 			expectNoStreamState(event.partial);
 			if (event.type !== "toolcall_delta") continue;
 			const call = event.partial.content[event.contentIndex];
