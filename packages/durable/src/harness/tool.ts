@@ -125,7 +125,7 @@ export const NestedCallDoc = defineDocFamily<NestedCallState, null>({
 });
 
 type Runtime = TaskRuntime<ToolTaskInput, ToolTaskCheckpoint, ToolTaskResult, ToolHooks>;
-type Content = (TextContent | ImageContent)[];
+type Content = ToolResultMessage["content"];
 
 /**
  * Built-in tool task: resolves the called tool among its phase agent's tools, validates, runs `beforeTool`, records intent,
@@ -973,7 +973,8 @@ function outputValue(output: Content): string | ImageContent | Content {
 	if (output.length === 0) return "";
 	if (output.length > 1) return output;
 	const [only] = output;
-	return only!.type === "text" ? only!.text : only!;
+	if (only!.type === "text") return only!.text;
+	return only!.type === "image" ? only! : output;
 }
 
 /** What the caller gets for a nested call without a stored result: one the scheduler faulted or orphaned. */

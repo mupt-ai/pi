@@ -443,6 +443,10 @@ export const OpenAIResponsesCompatSchema = openObject(OpenAIResponsesCompatPrope
 });
 
 const AnthropicMessagesCompatProperties = {
+	supportsToolReferences: optionalCompatBoolean({
+		description:
+			"Whether client-side tool search can load deferred tools with tool_reference blocks. Defaults to true for first-party Opus, Sonnet, and Fable models from Claude 4.5 onward; false otherwise.",
+	}),
 	supportsEagerToolInputStreaming: opt(
 		bool({
 			description:

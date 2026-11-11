@@ -343,6 +343,7 @@ describe.each(PATHS)("$name tool-call argument streaming", (path) => {
 		let shown = -1;
 		let partials = 0;
 		const message = await consume(path.stream(deltasOf(text, 24), args, text), (event) => {
+			if (event.type === "provider_event") return;
 			const partial = event.type === "done" ? event.message : event.type === "error" ? event.error : event.partial;
 			expectNoStreamState(partial, event.type);
 			if (event.type !== "toolcall_delta") return;

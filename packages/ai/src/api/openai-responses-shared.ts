@@ -5,11 +5,13 @@ import type {
 	ResponseCreateParamsStreaming,
 	ResponseInput,
 	ResponseInputContent,
+	ResponseInputFile,
 	ResponseInputImage,
 	ResponseInputItem,
 	ResponseInputText,
 	ResponseOutputItem,
 	ResponseOutputMessage,
+	ResponseOutputText,
 	ResponseReasoningItem,
 	ResponseStreamEvent,
 	ResponseToolSearchOutputItemParam,
@@ -18,6 +20,7 @@ import { calculateCost } from "../models.ts";
 import type {
 	Api,
 	AssistantMessage,
+	DocumentContent,
 	ImageContent,
 	Model,
 	StopReason,
@@ -78,20 +81,30 @@ function parseTextSignature(
 	return { id: signature };
 }
 
-type ToolResultOutputContent = Array<ResponseInputText | ResponseInputImage>;
+type ToolResultOutputContent = Array<ResponseInputText | ResponseInputImage | ResponseInputFile>;
+
+function convertDocument(document: DocumentContent): ResponseInputFile {
+	return {
+		type: "input_file",
+		filename: "document.pdf",
+		file_data: `data:${document.mimeType};base64,${document.data}`,
+	};
+}
 
 function convertToolResultOutput<TApi extends Api>(
 	model: Model<TApi>,
-	content: readonly (TextContent | ImageContent)[],
+	content: readonly (TextContent | ImageContent | DocumentContent)[],
 ): string | ToolResultOutputContent {
 	const textResult = content
 		.filter((c): c is TextContent => c.type === "text")
 		.map((c) => c.text)
 		.join("\n");
 	const images = content.filter((c): c is ImageContent => c.type === "image");
+	const documents = content.filter((c): c is DocumentContent => c.type === "document");
+	const sendImages = images.length > 0 && model.input.includes("image");
 	const hasText = textResult.trim().length > 0;
 
-	if (images.length === 0 || !model.input.includes("image")) {
+	if (!sendImages && documents.length === 0) {
 		return sanitizeSurrogates(hasText ? textResult : images.length > 0 ? "(see attached image)" : "(no tool output)");
 	}
 
@@ -99,18 +112,20 @@ function convertToolResultOutput<TApi extends Api>(
 	if (hasText) {
 		output.push({ type: "input_text", text: sanitizeSurrogates(textResult) });
 	}
-	for (const image of images) {
+	for (const image of sendImages ? images : []) {
 		output.push({
 			type: "input_image",
 			detail: "auto",
 			image_url: `data:${image.mimeType};base64,${image.data}`,
 		});
 	}
+	for (const document of documents) output.push(convertDocument(document));
 	return output;
 }
 
 export interface OpenAIResponsesStreamOptions {
 	onProviderStreamEvent?: StreamOptions["onProviderStreamEvent"];
+	emitProviderEvents?: boolean;
 	serviceTier?: ResponseCreateParamsStreaming["service_tier"];
 	grammarToolInputProperties?: ReadonlyMap<string, string>;
 	resolveServiceTier?: (
@@ -311,6 +326,7 @@ export function convertResponsesMessages<TApi extends Api>(
 							text: sanitizeSurrogates(item.text),
 						} satisfies ResponseInputText;
 					}
+					if (item.type === "document") return convertDocument(item);
 					return {
 						type: "input_image",
 						detail: "auto",
@@ -331,7 +347,9 @@ export function convertResponsesMessages<TApi extends Api>(
 			const isDifferentModel = isSameProviderAndApi && assistantMsg.model !== model.id;
 			let textBlockIndex = 0;
 
-			for (const block of msg.content) {
+			for (const block of msg.content as Array<
+				AssistantMessage["content"][number] | { type: "providerItem"; item: Record<string, unknown> }
+			>) {
 				if (block.type === "thinking") {
 					if (block.thinkingSignature) {
 						const reasoningItem = JSON.parse(block.thinkingSignature) as ResponseReasoningItem;
@@ -353,7 +371,13 @@ export function convertResponsesMessages<TApi extends Api>(
 					output.push({
 						type: "message",
 						role: "assistant",
-						content: [{ type: "output_text", text: sanitizeSurrogates(textBlock.text), annotations: [] }],
+						content: [
+							{
+								type: "output_text",
+								text: sanitizeSurrogates(textBlock.text),
+								annotations: (textBlock.annotations ?? []) as unknown as ResponseOutputText["annotations"],
+							},
+						],
 						status: "completed",
 						id: msgId,
 						phase: parsedSignature?.phase,
@@ -396,6 +420,8 @@ export function convertResponsesMessages<TApi extends Api>(
 							...(isSameModel && toolCall.namespace !== undefined ? { namespace: toolCall.namespace } : {}),
 						});
 					}
+				} else if (block.type === "providerItem") {
+					output.push(block.item as unknown as ResponseInputItem);
 				}
 			}
 			if (output.length === 0) continue;
@@ -548,7 +574,13 @@ export async function processResponsesStream<TApi extends Api>(
 		}
 		if (item.type === "message") {
 			applyMessagePhaseStopReason(item);
-			const block: TextContent = { type: "text", text: "" };
+			// Carry the item's id and phase from the start so streaming consumers
+			// can announce them before any text arrives.
+			const block: TextContent = {
+				type: "text",
+				text: "",
+				...(item.id ? { textSignature: encodeTextSignatureV1(item.id, item.phase ?? undefined) } : {}),
+			};
 			output.content.push(block);
 			const slot = { type: "text", block, contentIndex: output.content.length - 1 } satisfies ResponsesOutputSlot;
 			outputSlots.set(outputIndex, slot);
@@ -670,6 +702,7 @@ export async function processResponsesStream<TApi extends Api>(
 
 	for await (const event of openaiStream) {
 		await options?.onProviderStreamEvent?.(event, model);
+		if (options?.emitProviderEvents) stream.push({ type: "provider_event", event });
 		if (event.type === "response.created") {
 			output.responseId = event.response.id;
 		} else if (event.type === "response.output_item.added") {

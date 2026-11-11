@@ -164,6 +164,7 @@ Also applies to `azure-openai-responses` and `openai-codex-responses`.
 
 | Field | Type | Default | Description |
 |---|---|---|---|
+| `supportsToolReferences` | boolean |  | Whether client-side tool search can load deferred tools with tool_reference blocks. Defaults to true for first-party Opus, Sonnet, and Fable models from Claude 4.5 onward; false otherwise. |
 | `supportsEagerToolInputStreaming` | boolean | `true` | Whether the provider accepts per-tool eager_input_streaming. When false, the Anthropic provider omits tools[].eager_input_streaming and sends the legacy fine-grained-tool-streaming-2025-05-14 beta header for tool-enabled requests. |
 | `supportsLongCacheRetention` | boolean | `true` | Whether the provider supports Anthropic long cache retention through cache_control.ttl. |
 | `sendSessionAffinityHeaders` | boolean |  | Whether to send x-session-affinity from options.sessionId when caching is enabled. Required for providers like Fireworks that use session affinity for prompt cache routing; requests to the same replica maximize cache hits. Default: true for OpenRouter endpoints, false otherwise. |
