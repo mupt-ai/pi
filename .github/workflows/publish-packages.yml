@@ -10,6 +10,14 @@ on:
         description: Mupt package version, for example 0.84.4-mupt.1
         required: true
         type: string
+      catalog:
+        description: Model catalog source. Use generate when the build is ahead of the latest upstream release.
+        required: false
+        default: upstream-release
+        type: choice
+        options:
+          - upstream-release
+          - generate
 
 permissions:
   contents: read
@@ -56,6 +64,7 @@ jobs:
       # Ship the model catalog the upstream release was built and tested with,
       # not whatever the provider APIs list on publish day.
       - name: Hydrate model data from the upstream release
+        if: ${{ github.event_name == 'push' || inputs.catalog == 'upstream-release' }}
         env:
           MUPT_VERSION: ${{ steps.version.outputs.version }}
         run: |
@@ -64,6 +73,12 @@ jobs:
           tar -xzf "$RUNNER_TEMP/earendil-works-pi-ai-$upstream_version.tgz" -C "$RUNNER_TEMP"
           rm -rf packages/ai/src/providers/data
           cp -r "$RUNNER_TEMP/package/dist/providers/data" packages/ai/src/providers/data
+
+      # A build ahead of the upstream release ships the catalog the provider
+      # catalogs list today, as upstream's next release would.
+      - name: Generate model data
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.catalog == 'generate' }}
+        run: npm run generate-models --workspace packages/ai
 
       - name: Build
         run: npm run build:offline
