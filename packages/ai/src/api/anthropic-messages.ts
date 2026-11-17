@@ -495,9 +495,12 @@ function recordThreadReply(
 	});
 }
 
+// Deferred tools, loaded by `tool_reference`, work on Opus, Sonnet, Fable and Haiku from 4.5
+// on. Opus 4.1 and earlier do not take them.
+// https://platform.claude.com/docs/en/agents-and-tools/tool-use/tool-search-tool#model-compatibility
 function defaultSupportsToolReferences(model: Model<"anthropic-messages">): boolean {
 	if (model.provider !== "anthropic") return false;
-	const version = model.id.match(/^claude-(?:opus|sonnet|fable)-(\d+)(?:-(\d+))?(?:-|$)/);
+	const version = model.id.match(/^claude-(?:opus|sonnet|fable|haiku)-(\d+)(?:-(\d+))?(?:-|$)/);
 	if (!version) return false;
 	const major = Number(version[1]);
 	const minor = version[2] && version[2].length < 8 ? Number(version[2]) : 0;
