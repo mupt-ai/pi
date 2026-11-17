@@ -495,12 +495,11 @@ function recordThreadReply(
 	});
 }
 
-// Deferred tools, loaded by `tool_reference`, work on every Claude model from 4.5 on, Haiku
-// and Mythos included. Opus 4.1 and earlier do not take them.
+// Deferred tools, loaded by `tool_reference`, work on Opus, Sonnet, Fable and Haiku from 4.5
+// on. Opus 4.1 and earlier do not take them.
 // https://platform.claude.com/docs/en/agents-and-tools/tool-use/tool-search-tool#model-compatibility
 function defaultSupportsToolReferences(model: Model<"anthropic-messages">): boolean {
 	if (model.provider !== "anthropic") return false;
-	if (model.id.startsWith("claude-mythos-")) return true;
 	const version = model.id.match(/^claude-(?:opus|sonnet|fable|haiku)-(\d+)(?:-(\d+))?(?:-|$)/);
 	if (!version) return false;
 	const major = Number(version[1]);

@@ -153,8 +153,8 @@ describe("Anthropic client-side deferred tools", () => {
 		expect(payload.tools?.every((tool) => !tool.defer_loading)).toBe(true);
 	});
 
-	test("defers tools on every model with tool search, Haiku and Mythos included", async () => {
-		for (const id of ["claude-haiku-4-5", "claude-haiku-5-5", "claude-mythos-5-2", "claude-mythos-preview"]) {
+	test("defers tools on Haiku from 4.5 on", async () => {
+		for (const id of ["claude-haiku-4-5", "claude-haiku-4-5-20251001", "claude-haiku-5-5"]) {
 			const payload = await capture(context, { ...model, id });
 			expect(payload.tools?.some((tool) => tool.defer_loading)).toBe(true);
 		}
@@ -163,6 +163,7 @@ describe("Anthropic client-side deferred tools", () => {
 	test("falls back to active tools for unsupported models and all-deferred lists", async () => {
 		for (const target of [
 			{ ...model, id: "claude-opus-4-1" },
+			{ ...model, id: "claude-haiku-3-5" },
 			{ ...model, compat: { supportsToolReferences: false } },
 		]) {
 			const payload = await capture(context, target);
