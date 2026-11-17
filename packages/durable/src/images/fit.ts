@@ -3,7 +3,7 @@
 // host's input before it is submitted (`fitImage`, `fitImages`), and the results of the model's tool calls
 // (`createFitImagesExtension`). Photon is not loaded from here; pass a processor.
 import type { Context } from "@earendil-works/chord/context";
-import type { ImageContent, TextContent } from "@earendil-works/pi-ai";
+import type { ImageContent, TextContent, ToolResultMessage } from "@earendil-works/pi-ai";
 import { errorMessage } from "../errors.ts";
 import { AgentDoc } from "../harness/agent.ts";
 import { defineExtension, hook } from "../harness/define.ts";
@@ -25,9 +25,11 @@ export type FittedImage =
 	| { readonly kind: "omitted"; readonly note: string };
 
 /** What `fitImages` did: nothing, or the content with its images fitted and notes for the model. */
-export type FittedImages =
+export type FittedImages<T extends ContentItem = TextContent | ImageContent> =
 	| { readonly kind: "unchanged" }
-	| { readonly kind: "fitted"; readonly content: (TextContent | ImageContent)[]; readonly notes: readonly string[] };
+	| { readonly kind: "fitted"; readonly content: (T | ImageContent)[]; readonly notes: readonly string[] };
+
+type ContentItem = ToolResultMessage["content"][number];
 
 /**
  * The image in `bytes`, declared as `mimeType`, prepared by `processor` to fit `limits`. Every image is decoded, as the
@@ -63,14 +65,14 @@ function omitted(mimeType: string, reason: string): FittedImage {
 
 /**
  * `content` with each image fitted by `fitImage` (malformed base64 is left out as an image that cannot be prepared);
- * text stays where it is. `unchanged` when every image came back as it was.
+ * other content stays where it is. `unchanged` when every image came back as it was.
  */
-export async function fitImages(
-	content: readonly (TextContent | ImageContent)[],
+export async function fitImages<T extends ContentItem>(
+	content: readonly T[],
 	limits: ImageLimits,
 	processor: ImageProcessor,
-): Promise<FittedImages> {
-	const fitted: (TextContent | ImageContent)[] = [];
+): Promise<FittedImages<T>> {
+	const fitted: (T | ImageContent)[] = [];
 	const notes: string[] = [];
 	let changed = false;
 	for (const item of content) {
