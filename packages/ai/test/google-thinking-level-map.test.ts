@@ -173,6 +173,16 @@ describe("Google thinking level maps", () => {
 		expect(payload.config?.thinkingConfig).toEqual({ includeThoughts: true, thinkingLevel: "MEDIUM" });
 	});
 
+	it.each(googleAdapters)("sends XHIGH for Gemini 4 models that support it on $name", async ({ capture }) => {
+		const payload = await capture(
+			"gemini-4-neon",
+			{ off: null, minimal: null, low: "low", medium: "medium", high: "high", xhigh: "xhigh", max: null },
+			"xhigh",
+		);
+
+		expect(payload.config?.thinkingConfig).toEqual({ includeThoughts: true, thinkingLevel: "XHIGH" });
+	});
+
 	it.each(["xhigh", "max"] as const)("maps Google Generative AI %s to a supported level", async (reasoning) => {
 		const payload = await captureGooglePayload(
 			googleModel("gemini-3.7-flash", { xhigh: "high", max: "high" }),
